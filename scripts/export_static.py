@@ -87,6 +87,50 @@ def export_boundaries(conn) -> dict:
     return {"type": "FeatureCollection", "features": features}
 
 
+def export_address_shards(conn) -> int:
+    """Bake the parcel-address suggest index, sharded by house-number prefix.
+
+    parcels_base (county public-record GIS) is the private, local-only geocoding
+    substrate; what ships is the derived index: "SITEADDR|lat,lon" strings
+    grouped into site/data/addr/{first-3-digits}.json. The browser fetches one
+    ~30 KB shard per typed prefix and token-filters client-side, so every
+    suggestion carries its own coordinates and is guaranteed to resolve without
+    any external geocoder. Skipped (returns 0) when house_hunter is not
+    ATTACHed; the suggest UI then quietly stays off.
+    """
+    from school_lens.db import house_hunter_attached
+    if not house_hunter_attached(conn):
+        return 0
+    rows = conn.execute(
+        """SELECT siteaddr,
+                  round(ST_Y(ST_Transform(ST_Centroid(geometry),
+                        'EPSG:2913', 'EPSG:4326', true)), 5) AS lat,
+                  round(ST_X(ST_Transform(ST_Centroid(geometry),
+                        'EPSG:2913', 'EPSG:4326', true)), 5) AS lon
+           FROM hh.parcels_base
+           WHERE siteaddr IS NOT NULL AND length(trim(siteaddr)) >= 3
+           GROUP BY 1, 2, 3"""
+    ).fetchall()
+    shards: dict[str, list[str]] = {}
+    for addr, lat, lon in rows:
+        addr = " ".join(addr.split())
+        digits = ""
+        for ch in addr:
+            if ch.isdigit():
+                digits += ch
+            else:
+                break
+        if not digits:
+            continue
+        shards.setdefault(digits[:3], []).append(f"{addr}|{lat},{lon}")
+    out_dir = SITE_DATA / "addr"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for key, entries in shards.items():
+        (out_dir / f"{key}.json").write_text(
+            json.dumps(sorted(entries)), encoding="utf-8")
+    return len(rows)
+
+
 def main():
     SITE_DATA.mkdir(parents=True, exist_ok=True)
     conn = get_connection(read_only=True)
@@ -94,6 +138,7 @@ def main():
         metrics = export_metrics()
         schools = export_schools(conn)
         boundaries = export_boundaries(conn)
+        n_addr = export_address_shards(conn)
     finally:
         conn.close()
 
@@ -101,8 +146,11 @@ def main():
     (SITE_DATA / "schools.json").write_text(json.dumps(schools), encoding="utf-8")
     (SITE_DATA / "boundaries.geojson").write_text(json.dumps(boundaries), encoding="utf-8")
 
-    sizes = {p.name: f"{p.stat().st_size / 1024:.0f} KB" for p in SITE_DATA.iterdir()}
+    sizes = {p.name: f"{p.stat().st_size / 1024:.0f} KB"
+             for p in SITE_DATA.iterdir() if p.is_file()}
     print(f"metrics: {len(metrics['metrics'])}")
+    n_shards = len(list((SITE_DATA / 'addr').glob('*.json'))) if (SITE_DATA / 'addr').exists() else 0
+    print(f"addresses: {n_addr} in {n_shards} shards")
     print(f"schools: {len(schools)} (with point)")
     print(f"boundaries: {len(boundaries['features'])} (latest per nces_id+level)")
     print(f"sizes: {sizes}")

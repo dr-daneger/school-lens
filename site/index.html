@@ -83,6 +83,13 @@
   .barrow .bv { flex:0 0 48px; text-align:right; color:var(--ink); }
   .browse { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); }
   .browse-h { font-size:12px; color:var(--muted); margin-bottom:6px; }
+  .addr-wrap { position:relative; }
+  #addr-suggest { position:absolute; left:0; right:0; top:100%; z-index:2000; background:var(--field);
+    border:1px solid var(--line2); border-top:0; border-radius:0 0 6px 6px; max-height:260px; overflow:auto; }
+  #addr-suggest.hidden { display:none; }
+  #addr-suggest .opt { padding:7px 9px; font-size:12px; cursor:pointer; border-bottom:1px solid var(--line);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #addr-suggest .opt:hover, #addr-suggest .opt.active { background:var(--hover); }
 </style>
 </head>
 <body>
@@ -94,8 +101,11 @@
     </div>
     <div class="sub">Enter an address to see its assigned schools and how nearby options compare.
       Coverage: Washington and Multnomah counties, Oregon.</div>
-    <input id="addr" type="text" autocomplete="off" spellcheck="false"
-           placeholder="Street address, city (e.g. 1234 SW Main St, Beaverton)" />
+    <div class="addr-wrap">
+      <input id="addr" type="text" autocomplete="off" spellcheck="false"
+             placeholder="Street address, city (e.g. 1234 SW Main St, Beaverton)" />
+      <div id="addr-suggest" class="hidden"></div>
+    </div>
     <button id="find">Find assigned schools</button>
     <div class="controls">
       <select id="cmpLevel" title="grade band to compare">
@@ -389,9 +399,67 @@ document.getElementById("compare").onclick = compareNearby;
 document.getElementById("cmp-close").onclick = () => document.getElementById("cmp-panel").classList.add("hidden");
 document.getElementById("theme-toggle").onclick = () =>
   applyTheme(document.body.classList.contains("light") ? "dark" : "light");
-document.getElementById("addr").addEventListener("keydown", e => {
-  if (e.key === "Enter") { e.preventDefault(); findAssigned(); }
+// ---- Address autocomplete from the baked parcel index. The server version
+// queried parcels_base per keystroke; the static build ships the same data as
+// "ADDR|lat,lon" shards keyed by the first 3 digits of the house number
+// (data/addr/165.json holds every 165xx... address). One ~30 KB shard fetch
+// per prefix, cached, then token-AND filtering client-side. Every suggestion
+// carries its own coordinates, so a pick skips the external geocoder entirely. ----
+const addrEl = document.getElementById("addr");
+const sugEl = document.getElementById("addr-suggest");
+const shardCache = new Map();   // "165" -> ["ADDR|lat,lon", ...] or null (404)
+let sugItems = [], sugActive = -1, sugTimer = null;
+function hideSug() { sugEl.classList.add("hidden"); sugActive = -1; }
+function paintSug() { [...sugEl.children].forEach((el, i) => el.classList.toggle("active", i === sugActive)); }
+function pickSug(i) {
+  if (i < 0 || i >= sugItems.length) return;
+  const [label, ll] = sugItems[i].split("|");
+  const [lat, lon] = ll.split(",").map(Number);
+  addrEl.value = label;
+  lastGeo = { addr: label, geo: { lat, lon, matched_address: label, method: "parcel" } };
+  hideSug();
+  findAssigned();
+}
+async function getShard(key) {
+  if (shardCache.has(key)) return shardCache.get(key);
+  let data = null;
+  try { data = await getJSON("data/addr/" + key + ".json"); } catch (e) { /* no such shard */ }
+  shardCache.set(key, data);
+  return data;
+}
+async function fetchSug(q) {
+  const digits = (q.match(/^\d+/) || [""])[0];
+  if (!digits) return hideSug();        // suggest is house-number-first by design
+  const shard = await getShard(digits.slice(0, 3));
+  if (!shard) return hideSug();
+  const toks = q.toUpperCase().split(/\s+/).filter(Boolean).slice(0, 6);
+  sugItems = shard.filter(e => {
+    const a = e.split("|")[0];
+    return toks.every(t => a.includes(t));
+  }).slice(0, 10);
+  sugActive = -1;
+  if (!sugItems.length) return hideSug();
+  sugEl.innerHTML = sugItems.map(() => '<div class="opt"></div>').join('');
+  [...sugEl.children].forEach((el, i) => {
+    el.textContent = sugItems[i].split("|")[0];
+    el.onmousedown = e => { e.preventDefault(); pickSug(i); };
+  });
+  sugEl.classList.remove("hidden");
+}
+addrEl.addEventListener("input", () => {
+  clearTimeout(sugTimer);
+  const q = addrEl.value.trim();
+  if (q.length < 3) return hideSug();
+  sugTimer = setTimeout(() => fetchSug(q), 150);
 });
+addrEl.addEventListener("keydown", e => {
+  const open = !sugEl.classList.contains("hidden") && sugItems.length;
+  if (open && e.key === "ArrowDown") { e.preventDefault(); sugActive = Math.min(sugActive + 1, sugItems.length - 1); paintSug(); }
+  else if (open && e.key === "ArrowUp") { e.preventDefault(); sugActive = Math.max(sugActive - 1, 0); paintSug(); }
+  else if (e.key === "Enter") { e.preventDefault(); if (open && sugActive >= 0) pickSug(sugActive); else { hideSug(); findAssigned(); } }
+  else if (e.key === "Escape") hideSug();
+});
+addrEl.addEventListener("blur", () => setTimeout(hideSug, 150));
 
 // ---- Browse a school's catchment directly (anchor on a district, not an address) ----
 function loadDistricts() {
@@ -456,8 +524,11 @@ async function findAssigned() {
   clearLayers();
   await dataReady;
   let geo;
-  try { geo = await geocode(addr); }
-  catch (e) { results.innerHTML = '<div class="card no">Geocoder error: ' + e.message + '</div>'; return; }
+  if (lastGeo && lastGeo.addr === addr) geo = lastGeo.geo;  // parcel pick: exact coords
+  else {
+    try { geo = await geocode(addr); }
+    catch (e) { results.innerHTML = '<div class="card no">Geocoder error: ' + e.message + '</div>'; return; }
+  }
   if (!geo) {
     results.innerHTML = '<div class="card na">Address not found by the Census geocoder. '
       + 'Try street + city, e.g. "1234 SW Main St, Beaverton".</div>';
