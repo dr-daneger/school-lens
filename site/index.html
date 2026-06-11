@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>school-lens</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  :root {
+    --bg:#0f1624; --panel:#16213e; --ink:#e6edf7; --muted:#8aa0c0;
+    --field:#0d1730; --line:#243456; --line2:#2b3a5c; --hover:#1b2c4d;
+    --btn2:#26406e; --bar:#13233f; --accent:#64ffda; --on-accent:#06251c;
+    --panel-glass:rgba(13,23,48,0.97); --shadow:rgba(0,0,0,0.55);
+    --yes-bg:#10391f; --yes-ink:#79f0a3; --no-bg:#3a1320; --no-ink:#ff8aa3; --na-bg:#2a3147;
+    --elem:#4fc3f7; --mid:#ffb74d; --high:#e94560;
+  }
+  body.light {
+    --bg:#e9eef4; --panel:#ffffff; --ink:#16202e; --muted:#5a6b85;
+    --field:#f4f7fb; --line:#d8e0ec; --line2:#c4cfe0; --hover:#e6edf7;
+    --btn2:#dde6f3; --bar:#e3e9f2; --accent:#0d9488; --on-accent:#ffffff;
+    --panel-glass:rgba(255,255,255,0.97); --shadow:rgba(20,40,80,0.16);
+    --yes-bg:#dcfce7; --yes-ink:#15803d; --no-bg:#fee2e2; --no-ink:#b91c1c; --na-bg:#e7ecf3;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; font-family:system-ui,Segoe UI,Roboto,sans-serif; color:var(--ink); }
+  #app { display:flex; height:100%; }
+  #sidebar { width:360px; background:var(--panel); padding:16px; overflow-y:auto; }
+  #map { flex:1; background:var(--bg); }
+  .head { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:12px; margin-bottom:14px; }
+  .theme-toggle { width:auto; margin:0; flex:0 0 auto; padding:3px 10px; font-size:11px;
+    font-weight:500; background:var(--btn2); color:var(--ink); }
+  input[type=text] { width:100%; padding:9px; border-radius:6px; border:1px solid var(--line2);
+                     background:var(--field); color:var(--ink); }
+  button { margin-top:8px; width:100%; padding:9px; border:0; border-radius:6px;
+           background:var(--accent); color:var(--on-accent); font-weight:600; cursor:pointer; }
+  button.secondary { background:var(--btn2); color:var(--ink); }
+  .card { background:var(--field); border:1px solid var(--line); border-radius:8px; padding:10px; margin-top:12px; }
+  .lvl { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; }
+  .row { font-size:13px; margin:6px 0; }
+  .muted { color:var(--muted); }
+  table { width:100%; border-collapse:collapse; font-size:12px; margin-top:6px; }
+  th,td { text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); }
+  .badge { font-size:11px; padding:1px 6px; border-radius:10px; }
+  .yes { background:var(--yes-bg); color:var(--yes-ink); }
+  .no { background:var(--no-bg); color:var(--no-ink); }
+  .na { background:var(--na-bg); color:var(--muted); }
+  .note { font-size:11px; color:var(--muted); margin-top:8px; line-height:1.4; }
+  select { padding:9px; border-radius:6px; border:1px solid var(--line2); background:var(--field); color:var(--ink); }
+  .controls { display:flex; gap:8px; margin-top:8px; }
+  .controls button { margin-top:0; }
+  #cmp-panel { position:absolute; top:12px; right:12px; bottom:12px; width:min(780px,74vw);
+    background:var(--panel-glass); border:1px solid var(--line); border-radius:10px; padding:14px 16px;
+    overflow:auto; z-index:1200; box-shadow:0 10px 34px var(--shadow); color:var(--ink); }
+  #cmp-panel.hidden { display:none; }
+  #cmp-panel h2 { font-size:15px; margin:0 24px 2px 0; }
+  .cmp-close { position:absolute; top:10px; right:12px; width:auto; margin:0; padding:4px 10px; background:var(--btn2); color:var(--ink); }
+  table.cmp { font-size:12px; }
+  table.cmp th { position:sticky; top:0; background:var(--field); z-index:1; }
+  table.cmp th.sortable { cursor:pointer; user-select:none; white-space:nowrap; }
+  table.cmp th.sortable:hover { color:var(--ink); }
+  table.cmp td.se, table.cmp th.se { background:rgba(100,255,218,0.06); }
+  table.cmp tr.base { outline:1px solid var(--accent); }
+  table.cmp tr.clickable { cursor:pointer; }
+  table.cmp tr.clickable:hover td { background:var(--hover); }
+  #cmp-panel a, #sidebar a, .leaflet-popup-content a { color:var(--accent); text-decoration:none; }
+  #cmp-panel a:hover, #sidebar a:hover, .leaflet-popup-content a:hover { text-decoration:underline; }
+  .qbar { background:var(--bar); border-radius:4px; height:15px; min-width:60px; position:relative; }
+  .qbar > i { display:block; height:100%; background:var(--accent); border-radius:4px; }
+  .qbar > span { position:absolute; left:6px; top:0; font-size:10px; color:var(--ink); line-height:15px; }
+  .grp-se { color:var(--accent); } .grp-cx { color:var(--muted); }
+  .cmp-toolbar { margin:0 0 8px; padding-right:62px; min-height:26px; }
+  .vbtn { width:auto; margin:0 0 0 6px; padding:3px 12px; background:var(--hover); color:var(--muted); font-weight:500; }
+  .vbtn.on { background:var(--accent); color:var(--on-accent); font-weight:600; }
+  .cmp-metricsel { margin:8px 0; font-size:12px; color:var(--muted); }
+  .cmp-metricsel select { padding:5px 8px; font-size:12px; }
+  .barrow { display:flex; align-items:center; gap:8px; margin:3px 0; font-size:12px; }
+  .barrow .bn { flex:0 0 200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .barrow .bn.base { color:var(--accent); font-weight:600; }
+  .barrow .bwrap { flex:1; background:var(--bar); border-radius:4px; height:16px; overflow:hidden; }
+  .barrow .bwrap > i { display:block; height:100%; border-radius:4px; }
+  .barrow .bv { flex:0 0 48px; text-align:right; color:var(--ink); }
+  .browse { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); }
+  .browse-h { font-size:12px; color:var(--muted); margin-bottom:6px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="sidebar">
+    <div class="head">
+      <h1>school-lens</h1>
+      <button id="theme-toggle" class="theme-toggle" title="Toggle light/dark mode">Light mode</button>
+    </div>
+    <div class="sub">Enter an address to see its assigned schools and how nearby options compare.
+      Coverage: Washington and Multnomah counties, Oregon.</div>
+    <input id="addr" type="text" autocomplete="off" spellcheck="false"
+           placeholder="Street address, city (e.g. 1234 SW Main St, Beaverton)" />
+    <button id="find">Find assigned schools</button>
+    <div class="controls">
+      <select id="cmpLevel" title="grade band to compare">
+        <option value="high">High</option>
+        <option value="middle">Middle</option>
+        <option value="elementary">Elementary</option>
+      </select>
+      <button id="compare" class="secondary" style="flex:1;">Compare nearby</button>
+    </div>
+    <div class="browse">
+      <div class="browse-h">Or browse a school's catchment (no address)</div>
+      <div class="controls">
+        <select id="browseLevel">
+          <option value="high">High</option>
+          <option value="middle">Middle</option>
+          <option value="elementary">Elementary</option>
+        </select>
+        <select id="browseSchool" style="flex:1;"><option value="">Select a school...</option></select>
+      </div>
+    </div>
+    <div id="results"></div>
+    <div class="note">
+      Growth and on-track metrics reflect the school; proficiency levels and
+      neighborhood outcomes reflect who enrolls and are shown as context, not a
+      school score. Private schools may show blanks where comparable public data
+      does not exist; a blank is missing data, not a low score.
+    </div>
+    <div class="note">
+      Static demo: data is baked at build time. Addresses are geocoded by the
+      U.S. Census geocoder; drive times use the public OSRM demo server and fall
+      back to labeled straight-line distance.
+    </div>
+  </div>
+  <div id="map"></div>
+  <div id="cmp-panel" class="hidden"><button id="cmp-close" class="cmp-close">close</button><div id="cmp-body"></div></div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const LVL = { elementary:"#4fc3f7", middle:"#ffb74d", high:"#e94560" };
+const map = L.map("map", { preferCanvas:true }).setView([45.50, -122.80], 11);
+let baseLayer = null;
+function setBasemap(theme) {
+  const url = theme === "light"
+    ? "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+    : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
+  if (baseLayer) map.removeLayer(baseLayer);
+  baseLayer = L.tileLayer(url, { attribution:"&copy; OpenStreetMap, &copy; CARTO", maxZoom:19 });
+  baseLayer.addTo(map);
+  baseLayer.bringToBack();
+}
+function applyTheme(theme) {
+  document.body.classList.toggle("light", theme === "light");
+  const btn = document.getElementById("theme-toggle");
+  if (btn) btn.textContent = theme === "light" ? "Dark mode" : "Light mode";
+  setBasemap(theme);
+  try { localStorage.setItem("sl-theme", theme); } catch (e) { /* private mode */ }
+}
+applyTheme(localStorage.getItem("sl-theme") || "dark");
+
+let layers = [];
+let clickMarker = null;
+function clearLayers() { layers.forEach(l => map.removeLayer(l)); layers = []; clickMarker = null; }
+function add(l) { layers.push(l); l.addTo(map); return l; }
+
+async function getJSON(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(url + " -> " + r.status);
+  return r.json();
+}
+
+// ============================================================================
+// Data layer: everything the FastAPI app served per-request is baked into
+// static JSON at build time (scripts/export_static.py). The address-dependent
+// operations (geocode, assignment, candidate search, scorecard) run here.
+// ============================================================================
+let DATA = null;  // { metrics, schools, boundaries }
+const dataReady = (async () => {
+  const [metrics, schools, boundaries] = await Promise.all([
+    getJSON("data/metrics.json"), getJSON("data/schools.json"), getJSON("data/boundaries.geojson"),
+  ]);
+  DATA = { metrics: metrics.metrics, schools, boundaries };
+  loadDistricts();
+})();
+const schoolById = id => DATA.schools.find(s => s.nces_id === id);
+
+// ---- Geocoding: U.S. Census geocoder first (free, keyless; JSONP only, it
+// sends no CORS headers), Nominatim as a bounded fallback (CORS, 1 req/s
+// policy). The server version geocodes against house-hunter's parcel layer;
+// that substrate is local-only, so the public site uses federal/OSM instead. ----
+const COMPARE_RADIUS_MILES = 6.0;
+function censusJSONP(q) {
+  return new Promise((resolve, reject) => {
+    const cb = "__censusCb" + Math.floor(Math.random() * 1e9);
+    const s = document.createElement("script");
+    const cleanup = () => { delete window[cb]; s.remove(); };
+    window[cb] = d => { cleanup(); resolve(d); };
+    s.onerror = () => { cleanup(); reject(new Error("census geocoder unreachable")); };
+    s.src = "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress"
+          + "?benchmark=Public_AR_Current&format=jsonp&callback=" + cb
+          + "&address=" + encodeURIComponent(q);
+    document.head.appendChild(s);
+  });
+}
+async function geocode(addr) {
+  let q = addr.trim();
+  // The Census geocoder wants city or zip; default the state so a bare
+  // street+city works ("1234 SW Main St, Beaverton" -> append ", OR").
+  if (!/\bOR\b|\boregon\b|\d{5}/i.test(q)) q += ", OR";
+  try {
+    const d = await censusJSONP(q);
+    const m = d.result && d.result.addressMatches && d.result.addressMatches[0];
+    if (m) return { lat: m.coordinates.y, lon: m.coordinates.x,
+                    matched_address: m.matchedAddress, method: "census" };
+  } catch (e) { /* fall through to Nominatim */ }
+  const u = "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us"
+          + "&viewbox=-123.5,45.2,-122.2,45.8&bounded=1&q=" + encodeURIComponent(q);
+  const d = await getJSON(u);
+  if (d && d[0]) return { lat: +d[0].lat, lon: +d[0].lon,
+                          matched_address: d[0].display_name, method: "nominatim" };
+  return null;
+}
+
+// ---- Point-in-polygon (ray casting) over the baked boundaries. The server
+// does containment in EPSG:2913; rays over WGS84 agree except within a meter
+// or so of a boundary edge, which is inside the geocoder's own error. ----
+function ringContains(p, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+    if (((yi > p[1]) !== (yj > p[1])) &&
+        (p[0] < (xj - xi) * (p[1] - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+function polyContains(p, coords) {
+  return ringContains(p, coords[0]) && coords.slice(1).every(h => !ringContains(p, h));
+}
+function geomContains(p, geom) {
+  if (!geom) return false;
+  if (geom.type === "Polygon") return polyContains(p, geom.coordinates);
+  if (geom.type === "MultiPolygon") return geom.coordinates.some(c => polyContains(p, c));
+  return false;
+}
+
+// ---- Assignment: one result per grade band, mirroring spatial/assign.py
+// (including the honest "no boundary loaded" vs "outside all boundaries"). ----
+function assignSchools(lat, lon) {
+  const p = [lon, lat];
+  return ["elementary", "middle", "high"].map(level => {
+    const feats = DATA.boundaries.features.filter(f => f.properties.level === level);
+    const hit = feats.find(f => geomContains(p, f.geometry));
+    if (!hit) {
+      return { level, nces_id: null, school_name: null,
+               note: feats.length ? "address not inside any loaded boundary"
+                                  : "no boundary loaded for this level" };
+    }
+    const s = schoolById(hit.properties.nces_id);
+    return { level, nces_id: hit.properties.nces_id,
+             school_name: (s && s.name) || hit.properties.raw_name,
+             school_year: hit.properties.school_year };
+  });
+}
+function boundaryFeature(ncesId, level) {
+  return DATA.boundaries.features.find(f =>
+    f.properties.nces_id === ncesId && f.properties.level === level);
+}
+
+// ---- Distance: public OSRM demo server, straight-line haversine fallback
+// (always labeled; an approximation must say so). ----
+function haversineMiles(a, b) {
+  const R = 3958.8, toR = x => x * Math.PI / 180;
+  const dLat = toR(b[0] - a[0]), dLon = toR(b[1] - a[1]);
+  const h = Math.sin(dLat / 2) ** 2
+          + Math.cos(toR(a[0])) * Math.cos(toR(b[0])) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+async function driveDistance(from, to, withGeometry) {
+  try {
+    const u = "https://router.project-osrm.org/route/v1/driving/"
+            + from[1] + "," + from[0] + ";" + to[1] + "," + to[0]
+            + "?overview=" + (withGeometry ? "full" : "false") + "&geometries=geojson";
+    const d = await getJSON(u);
+    const r = d.routes && d.routes[0];
+    if (r) return { miles: Math.round(r.distance / 1609.34 * 10) / 10,
+                    minutes: Math.round(r.duration / 60),
+                    geometry: withGeometry ? r.geometry : null, method: "osrm" };
+  } catch (e) { /* demo server down or rate-limited; fall through */ }
+  return { miles: Math.round(haversineMiles(from, to) * 10) / 10,
+           minutes: null, geometry: null, method: "haversine" };
+}
+
+// ---- The comparison engine, ported from compare.py. Same three rules:
+// missing stays missing (never 0); default quality score is school_effect-only;
+// meets-or-beats runs only on shared school_effect metrics at confidence, and
+// with too few shared metrics the verdict is "not comparable", not "below". ----
+const TIE_BAND = 0.01;
+const seIds = () => DATA.metrics.filter(m => m.kind === "school_effect").map(m => m.id);
+const defaultWeights = () => Object.fromEntries(DATA.metrics.map(m => [m.id, m.default_weight]));
+
+function buildScorecard(cands, baselineId, { minConfidence = 0.5, minShared = 2 } = {}) {
+  const weights = defaultWeights();
+  const notes = [];
+  const bounds = {};
+  for (const m of DATA.metrics) {
+    const vals = cands.map(c => c.values[m.id] && c.values[m.id].value)
+                      .filter(v => v != null);
+    if (vals.length) bounds[m.id] = [Math.min(...vals), Math.max(...vals)];
+  }
+  const normalize = (raw, lo, hi, direction) => {
+    if (hi - lo < 1e-6) return 0.5;
+    let n = (raw - lo) / (hi - lo);
+    return direction === "lower_is_better" ? 1 - n : n;
+  };
+  const scoreOne = c => {
+    const scored = {};
+    for (const m of DATA.metrics) {
+      const mv = c.values[m.id];
+      const raw = mv ? mv.value : null;
+      let norm = null;
+      if (raw != null && bounds[m.id]) {
+        norm = normalize(raw, bounds[m.id][0], bounds[m.id][1], m.direction);
+      }
+      scored[m.id] = { metric_id: m.id, raw, normalized: norm,
+                       confidence: mv ? mv.confidence : 0.0,
+                       kind: m.kind, domain: m.domain, direction: m.direction };
+    }
+    return scored;
+  };
+  const quality = scored => {
+    let num = 0, den = 0;
+    for (const mid in scored) {
+      const w = weights[mid] || 0, s = scored[mid];
+      if (w <= 0 || s.normalized == null || s.confidence < minConfidence) continue;
+      num += w * s.normalized; den += w;
+    }
+    return den > 0 ? num / den : null;
+  };
+  const meetsOrBeats = (cand, base) => {
+    let nBetter = 0, nWorse = 0, nTie = 0;
+    const shared = [];
+    for (const mid of seIds()) {
+      const cs = cand[mid], bs = base[mid];
+      if (!cs || !bs || cs.raw == null || bs.raw == null) continue;
+      if (cs.confidence < minConfidence || bs.confidence < minConfidence) continue;
+      shared.push(mid);
+      const diff = (cs.normalized || 0) - (bs.normalized || 0);
+      if (Math.abs(diff) <= TIE_BAND) nTie++;
+      else if (diff > 0) nBetter++;
+      else nWorse++;
+    }
+    const comparable = shared.length >= minShared;
+    return [comparable ? nWorse === 0 : null,
+            { shared_metrics: shared, n_shared: shared.length, n_better: nBetter,
+              n_worse: nWorse, n_tie: nTie, comparable }];
+  };
+
+  const pairs = cands.map(c => ({ c, scored: scoreOne(c) }));
+  const base = pairs.find(p => p.c.nces_id === baselineId) || null;
+  if (baselineId && !base) {
+    notes.push("baseline " + baselineId + " not in candidate set; meets-or-beats skipped");
+  }
+  const candidates = pairs.map(({ c, scored }) => {
+    const isBase = !!base && c.nces_id === baselineId;
+    let mob = null, comp = null;
+    if (base && !isBase) [mob, comp] = meetsOrBeats(scored, base.scored);
+    return { nces_id: c.nces_id, name: c.name, school_type: c.school_type,
+             is_baseline: isBase, metrics: scored, quality_score: quality(scored),
+             meets_or_beats: mob, comparison: comp,
+             data_completeness: c.data_completeness || {}, lat: c.lat, lon: c.lon };
+  });
+  return { baseline_nces_id: baselineId, candidates, weights,
+           min_confidence: minConfidence, notes };
+}
+
+// Compare like with like: only schools of the baseline's grade band (privates,
+// often level "other" in PSS, are admitted agnostically), within the radius.
+function candidatesNear(lat, lon, miles, level, baselineId) {
+  const out = DATA.schools.filter(s =>
+    s.lat != null &&
+    haversineMiles([lat, lon], [s.lat, s.lon]) <= miles &&
+    (s.level === level || (String(s.school_type).startsWith("private") && s.level === "other")));
+  if (baselineId && !out.some(s => s.nces_id === baselineId)) {
+    const b = schoolById(baselineId);
+    if (b) out.push(b);
+  }
+  return out;
+}
+
+document.getElementById("find").onclick = findAssigned;
+document.getElementById("compare").onclick = compareNearby;
+document.getElementById("cmp-close").onclick = () => document.getElementById("cmp-panel").classList.add("hidden");
+document.getElementById("theme-toggle").onclick = () =>
+  applyTheme(document.body.classList.contains("light") ? "dark" : "light");
+document.getElementById("addr").addEventListener("keydown", e => {
+  if (e.key === "Enter") { e.preventDefault(); findAssigned(); }
+});
+
+// ---- Browse a school's catchment directly (anchor on a district, not an address) ----
+function loadDistricts() {
+  const level = document.getElementById("browseLevel").value;
+  const sel = document.getElementById("browseSchool");
+  const seen = new Map();
+  for (const f of DATA.boundaries.features) {
+    if (f.properties.level !== level || !f.properties.nces_id) continue;
+    const s = schoolById(f.properties.nces_id);
+    seen.set(f.properties.nces_id, {
+      nces_id: f.properties.nces_id,
+      name: (s && s.name) || f.properties.raw_name,
+      lat: s ? s.lat : null, lon: s ? s.lon : null,
+    });
+  }
+  const districts = [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+  sel.innerHTML = "";
+  const ph = document.createElement("option");
+  ph.value = ""; ph.textContent = "Select a school (" + districts.length + ")...";
+  sel.appendChild(ph);
+  for (const d of districts) {
+    const o = document.createElement("option");
+    o.value = d.nces_id; o.textContent = d.name;
+    o.dataset.name = d.name; o.dataset.lat = d.lat ?? ""; o.dataset.lon = d.lon ?? "";
+    sel.appendChild(o);
+  }
+}
+function browseDistrict() {
+  const sel = document.getElementById("browseSchool");
+  if (!sel.value) return;
+  const level = document.getElementById("browseLevel").value;
+  const opt = sel.selectedOptions[0];
+  const color = LVL[level] || "#999";
+  clearLayers();
+  const bounds = [];
+  const feat = boundaryFeature(sel.value, level);
+  if (feat) {
+    const poly = add(L.geoJSON(feat, { style:{ color, weight:2, opacity:0.9, fillColor:color, fillOpacity:0.14 } }));
+    poly.eachLayer(l => l.getBounds && bounds.push(...boundsToArr(l.getBounds())));
+  }
+  const lat = parseFloat(opt.dataset.lat), lon = parseFloat(opt.dataset.lon);
+  if (!isNaN(lat) && !isNaN(lon)) {
+    add(L.circleMarker([lat, lon], { radius:8, color:"#0b1220", weight:2, fillColor:color, fillOpacity:1 }))
+      .bindPopup(opt.dataset.name);
+    bounds.push([lat, lon]);
+  }
+  document.getElementById("results").innerHTML =
+    '<div class="card"><b>' + opt.dataset.name + '</b>'
+    + '<div class="row muted">' + level + ' attendance area</div>'
+    + '<div class="note">Showing this catchment. Enter an address above to compare options for a specific home.</div></div>';
+  if (bounds.length) map.fitBounds(bounds, { padding:[40, 40] });
+}
+document.getElementById("browseLevel").onchange = loadDistricts;
+document.getElementById("browseSchool").onchange = browseDistrict;
+
+let lastGeo = null;  // geocode of the last successful find (reused by compare/route)
+async function findAssigned() {
+  const addr = document.getElementById("addr").value.trim();
+  const results = document.getElementById("results");
+  if (!addr) return;
+  results.innerHTML = '<div class="card muted">Locating...</div>';
+  clearLayers();
+  await dataReady;
+  let geo;
+  try { geo = await geocode(addr); }
+  catch (e) { results.innerHTML = '<div class="card no">Geocoder error: ' + e.message + '</div>'; return; }
+  if (!geo) {
+    results.innerHTML = '<div class="card na">Address not found by the Census geocoder. '
+      + 'Try street + city, e.g. "1234 SW Main St, Beaverton".</div>';
+    return;
+  }
+  lastGeo = { addr, geo };
+
+  const home = [geo.lat, geo.lon];
+  const bounds = [home];
+  const routes = [], markers = [];
+  const assignments = assignSchools(geo.lat, geo.lon);
+
+  // Pass 1: sidebar rows + catchment polygons (drawn first => at the bottom).
+  let html = '<div class="card"><b>Assigned schools</b>';
+  for (const a of assignments) {
+    const color = LVL[a.level] || "#999";
+    let dist = "";
+    const s = a.nces_id ? schoolById(a.nces_id) : null;
+    if (s && s.lat != null) {
+      const d = await driveDistance(home, [s.lat, s.lon], true);
+      dist = d.miles + " mi";
+      if (d.minutes != null) dist += ", " + d.minutes + " min";
+      if (d.method === "haversine") dist += " (straight-line approx)";
+      if (d.geometry) routes.push({ g: d.geometry, color });
+      markers.push({ ll: [s.lat, s.lon], color, label: a.level + ": " + schoolLink(s.name) });
+      bounds.push([s.lat, s.lon]);
+    }
+    html += '<div class="row"><span class="lvl" style="background:' + color + '"></span>'
+         + '<b>' + a.level + ':</b> ' + (a.school_name ? schoolLink(a.school_name) : '<span class="muted">' + (a.note || "none") + '</span>')
+         + (dist ? ' <span class="muted">- ' + dist + '</span>' : '') + '</div>';
+    if (a.nces_id) {
+      const feat = boundaryFeature(a.nces_id, a.level);
+      if (feat) {
+        const poly = add(L.geoJSON(feat, { style:{ color, weight:2, opacity:0.9, fillColor:color, fillOpacity:0.14 } }));
+        poly.eachLayer(l => l.getBounds && bounds.push(...boundsToArr(l.getBounds())));
+      }
+    }
+  }
+  // Pass 2: routes above the fills; school markers above routes; home on top.
+  for (const r of routes) add(L.geoJSON(r.g, { style:{ color:r.color, weight:4, opacity:0.9 } }));
+  for (const m of markers)
+    add(L.circleMarker(m.ll, { radius:7, color:"#0b1220", weight:1.5, fillColor:m.color, fillOpacity:1 })).bindPopup(m.label);
+  add(L.circleMarker(home, { radius:9, color:"#06251c", weight:3, fillColor:"#64ffda", fillOpacity:1 }))
+    .bindPopup("Home: " + (geo.matched_address || addr)).bringToFront();
+
+  html += '</div>';
+  results.innerHTML = html;
+  if (bounds.length > 1) map.fitBounds(bounds, { padding:[40,40] });
+}
+
+function boundsToArr(b) { return [[b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]]; }
+
+// ---- Comparison panel: registry-driven Table + Chart views ----
+const CMP_COLS = [
+  { id: "grad_rate", label: "Grad %", se: true },
+  { id: "ninth_grade_on_track", label: "On-track %", se: true },
+  { id: "ela_proficiency", label: "ELA %", se: false },
+  { id: "math_proficiency", label: "Math %", se: false },
+  { id: "suspension_rate", label: "Susp %", se: false },
+  { id: "college_going_rate", label: "College %", se: false },
+  { id: "student_teacher_ratio", label: "Stu:Tch", se: false },
+  { id: "tuition", label: "Tuition $", se: false },
+];
+let cmpData = null, cmpView = "table", cmpMetric = "grad_rate";
+let cmpSort = { col: null, dir: -1 };  // col=null => default (quality desc, baseline pinned)
+
+const metaOf = id => (DATA ? DATA.metrics : []).find(m => m.id === id) || {};
+const metricLabel = id => metaOf(id).label || id;
+const metricKind = id => metaOf(id).kind || "";
+
+async function compareNearby() {
+  const addr = document.getElementById("addr").value.trim();
+  const level = document.getElementById("cmpLevel").value;
+  if (!addr) return;
+  const panel = document.getElementById("cmp-panel");
+  const body = document.getElementById("cmp-body");
+  panel.classList.remove("hidden");
+  body.innerHTML = '<div class="muted">Comparing ' + level + ' schools...</div>';
+  await dataReady;
+  let geo;
+  if (lastGeo && lastGeo.addr === addr) geo = lastGeo.geo;
+  else {
+    try { geo = await geocode(addr); }
+    catch (e) { body.innerHTML = '<div class="card no">Geocoder error: ' + e.message + '</div>'; return; }
+  }
+  if (!geo) { body.innerHTML = '<div class="card na">Address not found by the Census geocoder.</div>'; return; }
+  lastGeo = { addr, geo };
+  const assigns = assignSchools(geo.lat, geo.lon);
+  const base = assigns.find(a => a.level === level);
+  const baselineId = base ? base.nces_id : null;
+  const cands = candidatesNear(geo.lat, geo.lon, COMPARE_RADIUS_MILES, level, baselineId);
+  const card = buildScorecard(cands, baselineId);
+  cmpData = { scorecard: card, _level: level, _addr: addr, _geo: geo };
+  renderCmp();
+}
+
+function availableMetrics() {
+  const have = new Set();
+  for (const c of cmpData.scorecard.candidates)
+    for (const k in c.metrics) if (c.metrics[k].raw != null) have.add(k);
+  const order = DATA.metrics.map(m => m.id).filter(id => have.has(id));
+  return order.length ? order : [...have];
+}
+
+function renderCmp() {
+  const body = document.getElementById("cmp-body");
+  const avail = availableMetrics();
+  if (!avail.includes(cmpMetric)) cmpMetric = avail[0] || "grad_rate";
+  const lvl = cmpData._level;
+  let h = '<div class="cmp-toolbar"><b>' + lvl.charAt(0).toUpperCase() + lvl.slice(1)
+        + ' schools near ' + cmpData._addr + '</b><span style="float:right;">'
+        + '<button class="vbtn' + (cmpView === "table" ? " on" : "") + '" onclick="setCmpView(\'table\')">Table</button>'
+        + '<button class="vbtn' + (cmpView === "chart" ? " on" : "") + '" onclick="setCmpView(\'chart\')">Chart</button>'
+        + '</span></div>';
+  if (cmpView === "chart") {
+    h += '<div class="cmp-metricsel">Metric: <select onchange="setCmpMetric(this.value)">'
+       + avail.map(id => '<option value="' + id + '"' + (id === cmpMetric ? " selected" : "") + '>'
+                + metricLabel(id)
+                + (metricKind(id) === "school_effect" ? " - school" : metricKind(id) === "context" ? " - context" : "")
+                + '</option>').join('')
+       + '</select></div>';
+  }
+  h += '<div id="cmp-content"></div>';
+  body.innerHTML = h;
+  (cmpView === "chart" ? renderChart : renderTable)();
+}
+window.setCmpView = v => { cmpView = v; renderCmp(); };
+window.setCmpMetric = m => { cmpMetric = m; renderChart(); };
+
+function schoolUrl(name) {
+  return "https://www.google.com/search?q=" + encodeURIComponent(name + " Oregon school");
+}
+function schoolLink(name) {
+  if (!name) return "";
+  return '<a href="' + schoolUrl(name) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">' + name + '</a>';
+}
+function typeLabel(t) {
+  if (!t) return "";
+  if (t.indexOf("private") === 0) return "Private";
+  if (t === "charter") return "Charter";
+  if (t === "magnet") return "Magnet";
+  return "Public";
+}
+
+function pulseAt(ll, color) {
+  const ring = L.circleMarker(ll, { radius:9, color:color, weight:3, fill:false, opacity:0.85 }).addTo(map);
+  let r = 9, op = 0.85;
+  const iv = setInterval(() => {
+    r += 3.5; op -= 0.07;
+    if (op <= 0.05) { clearInterval(iv); map.removeLayer(ring); return; }
+    ring.setStyle({ opacity: op }); ring.setRadius(r);
+  }, 45);
+}
+function panToSchool(ll) {
+  // Center the school in the map area still visible to the left of the panel,
+  // so overlays stay put and the popup is in view without closing the panel.
+  map.setView(ll, Math.max(map.getZoom(), 12), { animate: false });
+  const panelOpen = !document.getElementById("cmp-panel").classList.contains("hidden");
+  if (panelOpen) map.panBy([(Math.min(780, window.innerWidth * 0.74) + 12) / 2, 0], { animate: true });
+}
+
+// Click a school in the comparison list: keep the map and ALL overlays, pop a
+// pulsing marker at the school with the drive time from the entered address.
+window.illuminateSchool = async function (nces) {
+  if (!cmpData || !cmpData.scorecard) return;
+  const c = cmpData.scorecard.candidates.find(x => x.nces_id === nces);
+  if (!c || c.lat == null || c.lon == null) return;
+  const color = LVL[cmpData._level] || "#999", ll = [c.lat, c.lon];
+  if (clickMarker) map.removeLayer(clickMarker);
+  clickMarker = add(L.circleMarker(ll, { radius:9, color:"#fff", weight:3, fillColor:color, fillOpacity:1 }));
+  pulseAt(ll, color);
+  panToSchool(ll);
+  clickMarker.bindPopup('<b>' + c.name + '</b><br><span class="muted">finding drive time...</span>').openPopup();
+  const geo = cmpData._geo;
+  if (!geo) { clickMarker.setPopupContent('<b>' + schoolLink(c.name) + '</b>'); return; }
+  const r = await driveDistance([geo.lat, geo.lon], ll, false);
+  let txt = '<b>' + schoolLink(c.name) + '</b>';
+  if (r.minutes != null) txt += '<br>' + r.minutes + ' min drive &middot; ' + r.miles + ' mi from your address';
+  else txt += '<br>~' + r.miles + ' mi (straight-line) from your address';
+  clickMarker.setPopupContent(txt);
+  clickMarker.openPopup();
+};
+
+function sortValue(c, key) {
+  if (key === "name") return (c.name || "").toLowerCase();
+  if (key === "type") return c.school_type || "";
+  if (key === "quality") return c.quality_score;
+  if (key === "verdict") return c.meets_or_beats === true ? 2 : (c.meets_or_beats === false ? 0 : 1);
+  if (key === "data") {
+    const v = c.data_completeness ? Object.values(c.data_completeness) : [];
+    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0;
+  }
+  const m = c.metrics[key];
+  return m ? m.raw : null;
+}
+function sortCandidates(cands) {
+  const rows = [...cands];
+  if (!cmpSort.col) {
+    return rows.sort((a, b) => {
+      if (a.is_baseline !== b.is_baseline) return a.is_baseline ? -1 : 1;
+      return (b.quality_score ?? -1) - (a.quality_score ?? -1);
+    });
+  }
+  return rows.sort((a, b) => {
+    const va = sortValue(a, cmpSort.col), vb = sortValue(b, cmpSort.col);
+    const na = (va == null || va === ""), nb = (vb == null || vb === "");
+    if (na && nb) return 0;
+    if (na) return 1;            // nulls/blanks always sort last
+    if (nb) return -1;
+    if (typeof va === "string") return cmpSort.dir * va.localeCompare(vb);
+    return cmpSort.dir * (va - vb);
+  });
+}
+function thCell(label, key, cls) {
+  const arrow = cmpSort.col === key ? (cmpSort.dir === 1 ? " ▲" : " ▼") : "";
+  return '<th class="sortable ' + (cls || "") + '" onclick="setCmpSort(\'' + key + '\')">' + label + arrow + '</th>';
+}
+window.setCmpSort = function (key) {
+  if (cmpSort.col === key) cmpSort.dir = -cmpSort.dir;
+  else { cmpSort.col = key; cmpSort.dir = (key === "name" || key === "type") ? 1 : -1; }
+  renderTable();
+};
+
+function renderTable() {
+  const card = cmpData.scorecard;
+  const rows = sortCandidates(card.candidates);
+  const fmt = v => (v == null ? '<span class="muted">-</span>' : (Math.round(v * 10) / 10));
+  let h = '<div class="note">Quality = weighted <span class="grp-se">school-effect</span> metrics (grad + on-track). '
+        + '<span class="grp-cx">Grey</span> columns are context (who enrolls), shown but never in the score. '
+        + 'Click any column header to sort.</div>';
+  h += '<table class="cmp"><tr>'
+     + thCell("School", "name") + thCell("Type", "type") + thCell("Quality", "quality")
+     + CMP_COLS.map(c => thCell(c.label, c.id, c.se ? "se grp-se" : "grp-cx")).join('')
+     + thCell("vs base", "verdict") + thCell("Data", "data") + '</tr>';
+  for (const c of rows) {
+    const q = c.quality_score;
+    const qbar = q == null ? '<span class="muted">n/a</span>'
+      : '<div class="qbar"><i style="width:' + Math.round(q * 100) + '%"></i><span>' + q.toFixed(2) + '</span></div>';
+    let verdict = '<span class="badge na">n/a</span>';
+    if (c.is_baseline) verdict = '<span class="badge na">baseline</span>';
+    else if (c.meets_or_beats === true) verdict = '<span class="badge yes">meets/beats</span>';
+    else if (c.meets_or_beats === false) verdict = '<span class="badge no">below</span>';
+    const cells = CMP_COLS.map(col => {
+      const m = c.metrics[col.id];
+      return '<td class="' + (col.se ? "se" : "") + '">' + fmt(m ? m.raw : null) + '</td>';
+    }).join('');
+    const comp = c.data_completeness ? Object.values(c.data_completeness) : [];
+    const cm = comp.length ? Math.round(100 * comp.reduce((a, b) => a + b, 0) / comp.length) : 0;
+    h += '<tr class="clickable' + (c.is_baseline ? ' base' : '') + '" onclick="illuminateSchool(\'' + c.nces_id + '\')" title="Show on map">'
+       + '<td>' + schoolLink(c.name) + '</td><td class="muted">' + typeLabel(c.school_type) + '</td><td>' + qbar + '</td>'
+       + cells + '<td>' + verdict + '</td><td class="muted">' + cm + '%</td></tr>';
+  }
+  h += '</table>';
+  if (card.notes && card.notes.length) h += '<div class="note">' + card.notes.join("; ") + '</div>';
+  document.getElementById("cmp-content").innerHTML = h;
+}
+
+function renderChart() {
+  const card = cmpData.scorecard;
+  const kind = metricKind(cmpMetric);
+  const col = kind === "school_effect" ? "#64ffda" : "#ffb74d";
+  const rows = card.candidates
+    .map(c => ({ name: c.name, base: c.is_baseline, m: c.metrics[cmpMetric] }))
+    .filter(r => r.m && r.m.raw != null)
+    .sort((a, b) => (b.m.normalized ?? -1) - (a.m.normalized ?? -1));
+  let h = '<div class="note">' + metricLabel(cmpMetric) + ' (' + (kind ? kind.replace("_", " ") : "metric")
+        + '). Bar = rank within this set (direction-adjusted, longer is better); number = actual value.</div>';
+  if (!rows.length) h += '<div class="muted">No data for this metric in this set.</div>';
+  for (const r of rows) {
+    const w = Math.round((r.m.normalized ?? 0) * 100);
+    h += '<div class="barrow"><span class="bn' + (r.base ? " base" : "") + '">' + r.name + '</span>'
+       + '<span class="bwrap"><i style="width:' + w + '%;background:' + col + '"></i></span>'
+       + '<span class="bv">' + (Math.round(r.m.raw * 10) / 10) + '</span></div>';
+  }
+  document.getElementById("cmp-content").innerHTML = h;
+}
+</script>
+</body>
+</html>
