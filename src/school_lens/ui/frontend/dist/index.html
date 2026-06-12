@@ -52,6 +52,9 @@
   select { padding:9px; border-radius:6px; border:1px solid var(--line2); background:var(--field); color:var(--ink); }
   .controls { display:flex; gap:8px; margin-top:8px; }
   .controls button { margin-top:0; }
+  /* Flex items refuse to shrink below intrinsic width by default; a select's
+     intrinsic width is its longest option, which would overflow the sidebar. */
+  .controls select, .controls button { min-width:0; }
   #cmp-panel { position:absolute; top:12px; right:12px; bottom:12px; width:min(780px,74vw);
     background:var(--panel-glass); border:1px solid var(--line); border-radius:10px; padding:14px 16px;
     overflow:auto; z-index:1200; box-shadow:0 10px 34px var(--shadow); color:var(--ink); }
@@ -92,6 +95,19 @@
   #addr-suggest .opt:hover, #addr-suggest .opt.active { background:var(--hover); }
   .browse { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); }
   .browse-h { font-size:12px; color:var(--muted); margin-bottom:6px; }
+  /* Mobile: stack controls above the map; cap the sidebar at half the viewport
+     with internal scroll so the map always keeps real estate; compare panel
+     goes full-screen. 16px form controls stop iOS Safari's focus auto-zoom.
+     dvh tracks the collapsing browser chrome; browsers without it keep the
+     inherited 100% height. */
+  @media (max-width: 768px) {
+    #app { flex-direction:column; height:100dvh; }
+    #sidebar { width:100%; flex:0 0 auto; max-height:50dvh; overflow-y:auto; padding:12px; }
+    #map { min-height:0; }
+    input[type=text], select { font-size:16px; }
+    #cmp-panel { top:0; right:0; bottom:0; left:0; width:auto; border-radius:0; padding:12px; }
+    .barrow .bn { flex-basis:110px; }
+  }
 </style>
 </head>
 <body>
@@ -142,6 +158,9 @@
 <script>
 const LVL = { elementary:"#4fc3f7", middle:"#ffb74d", high:"#e94560" };
 const map = L.map("map", { preferCanvas:true }).setView([45.50, -122.80], 11);
+// Leaflet only watches window resizes; on mobile the map's container also
+// resizes when the stacked sidebar grows or shrinks with results.
+new ResizeObserver(() => map.invalidateSize()).observe(document.getElementById("map"));
 let baseLayer = null;
 function setBasemap(theme) {
   const url = theme === "light"
