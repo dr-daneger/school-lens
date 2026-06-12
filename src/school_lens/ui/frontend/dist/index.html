@@ -69,6 +69,10 @@
   table.cmp tr.base { outline:1px solid var(--accent); }
   table.cmp tr.clickable { cursor:pointer; }
   table.cmp tr.clickable:hover td { background:var(--hover); }
+  /* School-name column pins while the wide table scrolls horizontally. */
+  table.cmp th:first-child, table.cmp td:first-child {
+    position:sticky; left:0; z-index:2; background:var(--panel-glass); }
+  table.cmp th:first-child { z-index:3; background:var(--field); }
   #cmp-panel a, #sidebar a, .leaflet-popup-content a { color:var(--accent); text-decoration:none; }
   #cmp-panel a:hover, #sidebar a:hover, .leaflet-popup-content a:hover { text-decoration:underline; }
   .qbar { background:var(--bar); border-radius:4px; height:15px; min-width:60px; position:relative; }
@@ -107,6 +111,9 @@
     input[type=text], select { font-size:16px; }
     #cmp-panel { top:0; right:0; bottom:0; left:0; width:auto; border-radius:0; padding:12px; }
     .barrow .bn { flex-basis:110px; }
+    table.cmp { font-size:11px; }
+    table.cmp th, table.cmp td { padding:3px 5px; }
+    table.cmp td:first-child { max-width:34vw; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   }
 </style>
 </head>

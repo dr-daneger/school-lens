@@ -69,6 +69,10 @@
   table.cmp tr.base { outline:1px solid var(--accent); }
   table.cmp tr.clickable { cursor:pointer; }
   table.cmp tr.clickable:hover td { background:var(--hover); }
+  /* School-name column pins while the wide table scrolls horizontally. */
+  table.cmp th:first-child, table.cmp td:first-child {
+    position:sticky; left:0; z-index:2; background:var(--panel-glass); }
+  table.cmp th:first-child { z-index:3; background:var(--field); }
   #cmp-panel a, #sidebar a, .leaflet-popup-content a { color:var(--accent); text-decoration:none; }
   #cmp-panel a:hover, #sidebar a:hover, .leaflet-popup-content a:hover { text-decoration:underline; }
   .qbar { background:var(--bar); border-radius:4px; height:15px; min-width:60px; position:relative; }
@@ -107,6 +111,9 @@
     input[type=text], select { font-size:16px; }
     #cmp-panel { top:0; right:0; bottom:0; left:0; width:auto; border-radius:0; padding:12px; }
     .barrow .bn { flex-basis:110px; }
+    table.cmp { font-size:11px; }
+    table.cmp th, table.cmp td { padding:3px 5px; }
+    table.cmp td:first-child { max-width:34vw; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   }
 </style>
 </head>
@@ -187,8 +194,9 @@ function applyTheme(theme) {
 applyTheme(localStorage.getItem("sl-theme") || "light");
 
 let layers = [];
-let clickMarker = null;
-function clearLayers() { layers.forEach(l => map.removeLayer(l)); layers = []; clickMarker = null; }
+let clickLayers = [];   // overlays from tapping a school in the comparison list
+function clearClickLayers() { clickLayers.forEach(l => map.removeLayer(l)); clickLayers = []; }
+function clearLayers() { layers.forEach(l => map.removeLayer(l)); layers = []; clearClickLayers(); }
 function add(l) { layers.push(l); l.addTo(map); return l; }
 
 async function getJSON(url) {
@@ -703,34 +711,57 @@ function pulseAt(ll, color) {
     ring.setStyle({ opacity: op }); ring.setRadius(r);
   }, 45);
 }
-function panToSchool(ll) {
-  // Center the school in the map area still visible to the left of the panel,
-  // so overlays stay put and the popup is in view without closing the panel.
-  map.setView(ll, Math.max(map.getZoom(), 12), { animate: false });
+function isMobile() { return window.matchMedia("(max-width: 768px)").matches; }
+function fitWithPanel(pts) {
+  // On desktop the compare panel covers the right side of the map; pad the fit
+  // so the overlays land in the strip that is actually visible. On mobile the
+  // panel is full-screen and gets closed before fitting, so no offset.
   const panelOpen = !document.getElementById("cmp-panel").classList.contains("hidden");
-  if (panelOpen) map.panBy([(Math.min(780, window.innerWidth * 0.74) + 12) / 2, 0], { animate: true });
+  const padRight = (panelOpen && !isMobile()) ? Math.min(780, window.innerWidth * 0.74) + 32 : 20;
+  map.fitBounds(pts, { paddingTopLeft: [20, 20], paddingBottomRight: [padRight, 20], maxZoom: 14 });
 }
 
-// Click a school in the comparison list: keep the map and ALL overlays, pop a
-// pulsing marker at the school with the drive time from the entered address.
+// Tap a school in the comparison list: on top of the existing overlays, draw
+// that school's own catchment (dashed, vs the assigned school's solid one),
+// the drive route from the entered address, and a marker with the drive time.
+// Tapping another school replaces these three layers, never the base overlays.
 window.illuminateSchool = async function (nces) {
   if (!cmpData || !cmpData.scorecard) return;
   const c = cmpData.scorecard.candidates.find(x => x.nces_id === nces);
   if (!c || c.lat == null || c.lon == null) return;
   const color = LVL[cmpData._level] || "#999", ll = [c.lat, c.lon];
-  if (clickMarker) map.removeLayer(clickMarker);
-  clickMarker = add(L.circleMarker(ll, { radius:9, color:"#fff", weight:3, fillColor:color, fillOpacity:1 }));
+  clearClickLayers();
+  if (isMobile()) document.getElementById("cmp-panel").classList.add("hidden");  // reveal the map; Compare nearby reopens
+
+  const fit = [ll];
+  const feat = boundaryFeature(nces, cmpData._level);  // publics only; undefined for charter/private
+  if (feat) {
+    const poly = L.geoJSON(feat, { style:{ color, weight:2.5, opacity:0.95, dashArray:"6 4",
+                                           fillColor:color, fillOpacity:0.10 } }).addTo(map);
+    clickLayers.push(poly);
+    poly.eachLayer(l => l.getBounds && fit.push(...boundsToArr(l.getBounds())));
+  }
+  const marker = L.circleMarker(ll, { radius:9, color:"#fff", weight:3, fillColor:color, fillOpacity:1 }).addTo(map);
+  clickLayers.push(marker);
   pulseAt(ll, color);
-  panToSchool(ll);
-  clickMarker.bindPopup('<b>' + c.name + '</b><br><span class="muted">finding drive time...</span>').openPopup();
+  marker.bindPopup('<b>' + c.name + '</b><br><span class="muted">finding drive time...</span>');
+
   const geo = cmpData._geo;
-  if (!geo) { clickMarker.setPopupContent('<b>' + schoolLink(c.name) + '</b>'); return; }
-  const r = await driveDistance([geo.lat, geo.lon], ll, false);
+  if (geo) fit.push([geo.lat, geo.lon]);
+  fitWithPanel(fit);
+  marker.openPopup();
+  const catchNote = feat ? '<br><span class="muted">dashed outline = this school\'s catchment</span>' : '';
+  if (!geo) { marker.setPopupContent('<b>' + schoolLink(c.name) + '</b>' + catchNote); return; }
+  const r = await driveDistance([geo.lat, geo.lon], ll, true);
+  if (r.geometry) {
+    clickLayers.push(L.geoJSON(r.geometry, { style:{ color, weight:4, opacity:0.9, dashArray:"8 6" } }).addTo(map));
+    marker.bringToFront();
+  }
   let txt = '<b>' + schoolLink(c.name) + '</b>';
   if (r.minutes != null) txt += '<br>' + r.minutes + ' min drive &middot; ' + r.miles + ' mi from your address';
   else txt += '<br>~' + r.miles + ' mi (straight-line) from your address';
-  clickMarker.setPopupContent(txt);
-  clickMarker.openPopup();
+  marker.setPopupContent(txt + catchNote);
+  marker.openPopup();
 };
 
 function sortValue(c, key) {
