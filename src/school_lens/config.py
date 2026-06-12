@@ -67,8 +67,15 @@ class Settings(BaseSettings):
     compare_radius_miles: float = 6.0
 
     # Verified boundary endpoints (docs/data-sources.md).
-    portlandmaps_opendata_root: str = (
-        "https://www.portlandmaps.com/arcgis/rest/services/Public/COP_OpenData/MapServer"
+    # City of Portland School_Boundaries (AGOL org quVN97tn06YNGj9s): ONE
+    # composite cell layer covering the metro region, each cell carrying its
+    # assigned school per grade band as attributes. Discovered via the City's
+    # "Schools, School Attendance Areas, and School Districts" web map (item
+    # e713b535b03945329cfcab4a9a20c58f); verified live 2026-06-11. Replaces the
+    # retired COP_OpenData MapServer ("service not started").
+    cop_school_boundaries_root: str = (
+        "https://services.arcgis.com/quVN97tn06YNGj9s/arcgis/rest/services/"
+        "School_Boundaries/FeatureServer"
     )
     metro_boundary_root: str = (
         "https://gis.oregonmetro.gov/arcgis/rest/services/OpenData/BoundaryDataWebMerc/MapServer"

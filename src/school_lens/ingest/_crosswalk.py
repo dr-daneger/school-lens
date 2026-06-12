@@ -74,3 +74,79 @@ def match_by_name_geo(
     )
     geo = [(cid, d) for cid, d in geo if d <= max_ft]
     return (geo[0][0], 0.5) if geo else None
+
+
+def _match_subset(
+    name: str,
+    point: tuple[float, float] | None,
+    candidates: list[tuple[str, str, tuple[float, float] | None]],
+    *,
+    max_ft: float,
+    require_geo: bool,
+) -> tuple[str, float] | None:
+    """Token-subset match: one normalized name's token set contains the other's.
+
+    Catches renames and partial catchment labels ('McDaniel' -> 'Leodis V.
+    McDaniel High School', 'Boise-Eliot/Humboldt' -> 'Boise-Eliot Elementary
+    School'). Geo-confirmed 0.85; unique without geometry 0.75; ambiguous None.
+    """
+    target = set(normalize_name(name).split())
+    if not target:
+        return None
+    hits = []
+    for cid, cn, cp in candidates:
+        cand = set(normalize_name(cn).split())
+        if cand and (target <= cand or cand <= target):
+            hits.append((cid, cp))
+    if not hits:
+        return None
+    if point is not None:
+        within = sorted(
+            ((cid, _dist_ft(point, cp)) for cid, cp in hits if cp is not None),
+            key=lambda x: x[1],
+        )
+        within = [(cid, d) for cid, d in within if d <= max_ft]
+        if within:
+            return within[0][0], 0.85
+    if require_geo:
+        return None
+    if len(hits) == 1:
+        return hits[0][0], 0.75
+    return None
+
+
+def match_catchment(
+    name: str,
+    level: str | None,
+    point: tuple[float, float] | None,
+    candidates: list[tuple[str, str, str | None, tuple[float, float] | None]],
+    *,
+    max_ft: float = 2640.0,
+) -> tuple[str, float] | None:
+    """Resolve a catchment (name, grade band, centroid) to a school.
+
+    candidates: list of (nces_id, name, level, point_2913_or_None). The grade
+    band is signal match_by_name_geo cannot use: 'Banks Elementary School' and
+    'Banks High School' both normalize to 'banks', but only one is a high
+    school. Ladder, most precise first; each step must be unambiguous:
+
+    1. exact normalized name among same-level schools (0.9 geo / 0.7 unique)
+    2. token-subset among same-level schools (0.85 geo / 0.75 unique)
+    3. exact normalized name across all levels (a K-8 catchment lists one
+       school at two grade bands, e.g. a 'middle' cell naming an 'elementary'
+       K-8 school)
+    4. token-subset across all levels, geo-confirmed only (0.85)
+    """
+    same = [(cid, cn, cp) for (cid, cn, lvl, cp) in candidates if lvl == level]
+    everything = [(cid, cn, cp) for (cid, cn, _lvl, cp) in candidates]
+
+    match = match_by_name_geo(name, point, same, max_ft=max_ft)
+    if match and match[1] >= 0.7:   # exclude the geo-only 0.5 nearest fallback
+        return match
+    match = _match_subset(name, point, same, max_ft=max_ft, require_geo=False)
+    if match:
+        return match
+    match = match_by_name_geo(name, point, everything, max_ft=max_ft)
+    if match and match[1] >= 0.7:
+        return match
+    return _match_subset(name, point, everything, max_ft=max_ft, require_geo=True)

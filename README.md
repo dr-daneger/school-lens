@@ -28,7 +28,7 @@ python -m venv .venv
 pip install -e .[dev]
 pip install -e ../house-hunter        # reused library: ArcGIS puller + CRS helpers
 school-lens init-db                   # create the schema; ATTACH house_hunter.duckdb read-only
-school-lens ingest-boundaries pps     # PortlandMaps attendance areas (verified endpoint)
+school-lens ingest-boundaries cop_metro  # City of Portland metro attendance areas
 school-lens serve                     # FastAPI + Leaflet at http://127.0.0.1:8011
 ```
 

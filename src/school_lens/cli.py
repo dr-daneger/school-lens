@@ -32,7 +32,7 @@ def init_db_cmd() -> None:
 @click.argument("source", default="all")
 @click.option("--year", default=None, help="override the school_year tag for ingested rows")
 def ingest_boundaries_cmd(source: str, year: str | None) -> None:
-    """Ingest attendance-area boundaries. SOURCE: pps | beaverton | hillsboro | all."""
+    """Ingest attendance-area boundaries. SOURCE: cop_metro | beaverton | hillsboro | all."""
     from school_lens.ingest.boundaries import boundary_sources, ingest_source
 
     known = boundary_sources()
