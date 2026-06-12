@@ -7,11 +7,12 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
   :root {
-    --bg:#0f1624; --panel:#16213e; --ink:#e6edf7; --muted:#8aa0c0;
-    --field:#0d1730; --line:#243456; --line2:#2b3a5c; --hover:#1b2c4d;
-    --btn2:#26406e; --bar:#13233f; --accent:#64ffda; --on-accent:#06251c;
-    --panel-glass:rgba(13,23,48,0.97); --shadow:rgba(0,0,0,0.55);
-    --yes-bg:#10391f; --yes-ink:#79f0a3; --no-bg:#3a1320; --no-ink:#ff8aa3; --na-bg:#2a3147;
+    --bg:#141416; --panel:#1c1c1f; --ink:#e8eaed; --muted:#9ba1aa;
+    --field:#232327; --line:#2e2e33; --line2:#3c3c42; --hover:#2a2a30;
+    --btn2:#34343a; --bar:#27272c; --accent:#8ab4f8; --on-accent:#0d1b2e;
+    --panel-glass:rgba(28,28,31,0.97); --shadow:rgba(0,0,0,0.5);
+    --yes-bg:#1d3326; --yes-ink:#7ee2a0; --no-bg:#3a2024; --no-ink:#ff9aa8; --na-bg:#2e2e35;
+    --se-tint:rgba(138,180,248,0.08);
     --elem:#4fc3f7; --mid:#ffb74d; --high:#e94560;
   }
   body.light {
@@ -20,6 +21,7 @@
     --btn2:#dde6f3; --bar:#e3e9f2; --accent:#0d9488; --on-accent:#ffffff;
     --panel-glass:rgba(255,255,255,0.97); --shadow:rgba(20,40,80,0.16);
     --yes-bg:#dcfce7; --yes-ink:#15803d; --no-bg:#fee2e2; --no-ink:#b91c1c; --na-bg:#e7ecf3;
+    --se-tint:rgba(13,148,136,0.06);
   }
   * { box-sizing:border-box; }
   html,body { margin:0; height:100%; font-family:system-ui,Segoe UI,Roboto,sans-serif; color:var(--ink); }
@@ -60,7 +62,7 @@
   table.cmp th { position:sticky; top:0; background:var(--field); z-index:1; }
   table.cmp th.sortable { cursor:pointer; user-select:none; white-space:nowrap; }
   table.cmp th.sortable:hover { color:var(--ink); }
-  table.cmp td.se, table.cmp th.se { background:rgba(100,255,218,0.06); }
+  table.cmp td.se, table.cmp th.se { background:var(--se-tint); }
   table.cmp tr.base { outline:1px solid var(--accent); }
   table.cmp tr.clickable { cursor:pointer; }
   table.cmp tr.clickable:hover td { background:var(--hover); }
@@ -163,7 +165,7 @@ function applyTheme(theme) {
   setBasemap(theme);
   try { localStorage.setItem("sl-theme", theme); } catch (e) { /* private mode */ }
 }
-applyTheme(localStorage.getItem("sl-theme") || "dark");
+applyTheme(localStorage.getItem("sl-theme") || "light");
 
 let layers = [];
 let clickMarker = null;
