@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>school-lens</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.css" />
 <style>
   :root {
     --bg:#141416; --panel:#1c1c1f; --ink:#e8eaed; --muted:#9ba1aa;
@@ -28,6 +29,11 @@
   #app { display:flex; height:100%; }
   #sidebar { width:360px; background:var(--panel); padding:16px; overflow-y:auto; }
   #map { flex:1; background:var(--bg); }
+  /* Only reached when WebGL is unavailable and the basemap falls back to
+     raster tiles; keeps the dark theme from flashing a bright map. */
+  body:not(.light) #map.raster-fallback .leaflet-tile-pane {
+    filter:invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9);
+  }
   .head { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
   h1 { font-size:18px; margin:0 0 4px; }
   .sub { color:var(--muted); font-size:12px; margin-bottom:14px; }
@@ -168,21 +174,51 @@
   <div id="cmp-panel" class="hidden"><button id="cmp-close" class="cmp-close">close</button><div id="cmp-body"></div></div>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"></script>
 <script>
 const LVL = { elementary:"#4fc3f7", middle:"#ffb74d", high:"#e94560" };
-const map = L.map("map", { preferCanvas:true }).setView([45.50, -122.80], 11);
+const map = L.map("map", { preferCanvas:true, maxZoom:19 }).setView([45.50, -122.80], 11);
 // Leaflet only watches window resizes; on mobile the map's container also
 // resizes when the stacked sidebar grows or shrinks with results.
 new ResizeObserver(() => map.invalidateSize()).observe(document.getElementById("map"));
 let baseLayer = null;
+
+// The basemap is vector tiles rendered by MapLibre GL and bridged into Leaflet as
+// a single layer. Leaflet still owns the viewport and every overlay; only the
+// basemap is drawn on a WebGL canvas beneath them. OpenFreeMap serves Positron and
+// its dark counterpart with no API key, which is the point: CARTO's raster endpoint
+// now watermarks keyless requests and is being retired outright.
+const OFM_STYLE = {
+  light: "https://tiles.openfreemap.org/styles/positron",
+  dark:  "https://tiles.openfreemap.org/styles/dark",
+};
+const OFM_ATTRIB =
+  '&copy; <a href="https://openfreemap.org">OpenFreeMap</a> &copy; OpenStreetMap contributors';
+
+// Without WebGL the bridge renders nothing at all, which would leave the
+// catchments and school markers floating over an empty pane. Detect once and
+// fall back to raster tiles instead.
+const HAS_WEBGL = (() => {
+  try {
+    const c = document.createElement("canvas");
+    return !!(c.getContext("webgl2") || c.getContext("webgl"));
+  } catch (e) { return false; }
+})();
+
 function setBasemap(theme) {
-  const url = theme === "light"
-    ? "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-    : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
   if (baseLayer) map.removeLayer(baseLayer);
-  baseLayer = L.tileLayer(url, { attribution:"&copy; OpenStreetMap, &copy; CARTO", maxZoom:19 });
+  if (HAS_WEBGL) {
+    // The bridge layer lives in Leaflet's tilePane by default, so it is already
+    // behind every overlay. It extends L.Layer, not L.GridLayer, so it has no
+    // bringToBack() to call.
+    baseLayer = L.maplibreGL({ style:OFM_STYLE[theme] || OFM_STYLE.light, attribution:OFM_ATTRIB });
+  } else {
+    baseLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+      { attribution:"&copy; OpenStreetMap contributors", maxZoom:19 });
+  }
+  document.getElementById("map").classList.toggle("raster-fallback", !HAS_WEBGL);
   baseLayer.addTo(map);
-  baseLayer.bringToBack();
 }
 function applyTheme(theme) {
   document.body.classList.toggle("light", theme === "light");
